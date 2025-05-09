@@ -63,9 +63,11 @@ void ToggleTouchpad(bool enable)
 			ULONG desiredStatus = enable ? DICS_ENABLE : DICS_DISABLE;
 			//Check if device is already in the state we want
 			ULONG currStatus, problem = 0;
+
 			CM_Get_DevNode_Status(&currStatus, &problem, devData.DevInst, 0);
 
-			if (currStatus != desiredStatus) 
+			//if (currStatus != desiredStatus) 
+			//if ((problem == 22 && enable) || !enable)
 			{
 				//Enable/disable
 				SP_CLASSINSTALL_HEADER ciHeader;
@@ -81,9 +83,9 @@ void ToggleTouchpad(bool enable)
 				SetupDiSetClassInstallParams(devInfo, &devData, (PSP_CLASSINSTALL_HEADER)&pcParams, sizeof(SP_PROPCHANGE_PARAMS));
 				SetupDiChangeState(devInfo, &devData);
 			}
-			else
+			//else
 			{
-				std::cout << "check is working";
+				//std::cout << "check is working";
 			}
 
 			break;
@@ -122,7 +124,7 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
 
 void RunService()
 {
-	//while (true)
+	while (true)
 	{
 		DWORD value = 0;
 		DWORD size = sizeof(DWORD);
