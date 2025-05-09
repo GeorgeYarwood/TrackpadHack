@@ -2,7 +2,7 @@ After re-installing Windows on my Asus Flow x13, the trackpad no longer disabled
 
 I created this service to fix the issue.
 
-Instalation steps:
+Installation steps:
 
 1. Download the exe and place it somewhere convienient - e.g. C:\TrackpadHackService
 2. Register the service - Open an elevated command prompt and enter 'sc create TouchpadHackService binPath= "PathToService.exe" start= auto'
