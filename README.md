@@ -10,6 +10,12 @@ Installation steps:
 
 This will run the service automatically and mean you never have to think about it again
 
+There is a chance this won't work on your x13 if different ones use different trackpads or they have different hardware IDs.
+
+This means you'll need to edit the set hardware ID in main.cpp and then build your own copy.
+
+I may try and find a better way of handling this if this is an issue
+
 DISCLAIMER!!
 
 I take no responsibiltiy for any issues or damage caused by this software. The functionality is basic and just disables the trackpad device via its hardware ID. 
