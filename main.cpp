@@ -65,9 +65,8 @@ void ToggleTouchpad(bool enable)
 			ULONG currStatus, problem = 0;
 
 			CM_Get_DevNode_Status(&currStatus, &problem, devData.DevInst, 0);
-
-			//if (currStatus != desiredStatus) 
-			//if ((problem == 22 && enable) || !enable)
+			bool isEnabled = problem != CM_PROB_DISABLED ? true : false;
+			if (isEnabled != enable)
 			{
 				//Enable/disable
 				SP_CLASSINSTALL_HEADER ciHeader;

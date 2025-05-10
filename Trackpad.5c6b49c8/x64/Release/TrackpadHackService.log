@@ -1,7 +1,7 @@
 ﻿  main.cpp
   Generating code
-  30 of 37 functions (81.1%) were compiled, the rest were copied from previous compilation.
+  2 of 37 functions ( 5.4%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    4 functions had inline decision re-evaluated but remain unchanged
+    1 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
   TrackpadHackService.vcxproj -> C:\Users\georg\Documents\TrackpadHack\x64\Release\TrackpadHackService.exe
