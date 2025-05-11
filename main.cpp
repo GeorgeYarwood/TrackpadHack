@@ -82,11 +82,8 @@ void ToggleTouchpad(bool enable)
 				SetupDiSetClassInstallParams(devInfo, &devData, (PSP_CLASSINSTALL_HEADER)&pcParams, sizeof(SP_PROPCHANGE_PARAMS));
 				SetupDiChangeState(devInfo, &devData);
 			}
-			//else
-			{
-				//std::cout << "check is working";
-			}
 
+			free(devBuf);
 			break;
 		}
 
@@ -123,36 +120,31 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
 
 void RunService()
 {
-	while (true)
-	{
-		DWORD value = 0;
-		DWORD size = sizeof(DWORD);
-		LRESULT result = RegGetValue(HKEY_LOCAL_MACHINE,
-			L"SYSTEM\\CurrentControlSet\\Control\\PriorityControl",
-			L"ConvertibleSlateMode",
-			RRF_RT_REG_DWORD,
-			nullptr,
-			&value,
-			&size);
+	DWORD value = 0;
+	DWORD size = sizeof(DWORD);
+	LRESULT result = RegGetValue(HKEY_LOCAL_MACHINE,
+		L"SYSTEM\\CurrentControlSet\\Control\\PriorityControl",
+		L"ConvertibleSlateMode",
+		RRF_RT_REG_DWORD,
+		nullptr,
+		&value,
+		&size);
 
-		if (result == ERROR_SUCCESS)
+	if (result == ERROR_SUCCESS)
+	{
+		switch (value)
 		{
-			switch (value)
+			case TABLET_MODE:
 			{
-				case TABLET_MODE:
-				{
-					ToggleTouchpad(false);
-					break;
-				}
-				case LAPTOP_MODE:
-				{
-					ToggleTouchpad(true);
-					break;
-				}
+				ToggleTouchpad(false);
+				break;
+			}
+			case LAPTOP_MODE:
+			{
+				ToggleTouchpad(true);
+				break;
 			}
 		}
-		
-		std::this_thread::sleep_for(std::chrono::microseconds(500));
 	}
 }
 
@@ -170,10 +162,14 @@ void WINAPI ServiceMain(DWORD, LPTSTR*) {
 	g_ServiceStatus.dwCurrentState = SERVICE_RUNNING;
 	SetServiceStatus(g_StatusHandle, &g_ServiceStatus);
 
-	RunService();
-
-
-	WaitForSingleObject(g_ServiceStopEvent, INFINITE);
+	while (true)
+	{
+		RunService();
+		if (WaitForSingleObject(g_ServiceStopEvent, 500) == WAIT_OBJECT_0)
+		{
+			break;
+		}
+	}
 
 	g_ServiceStatus.dwCurrentState = SERVICE_STOPPED;
 	SetServiceStatus(g_StatusHandle, &g_ServiceStatus);
@@ -182,7 +178,12 @@ void WINAPI ServiceMain(DWORD, LPTSTR*) {
 
 int wmain(int argc, wchar_t* argv[])
 {
-	//RunService();
+	//Uncomment to run standalone
+	/*while (true)
+	{
+		RunService();
+		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	}*/
 	SERVICE_TABLE_ENTRY ServiceTable[] =
 	{
 		{ (LPWSTR)SERVICE_NAME, ServiceMain },
