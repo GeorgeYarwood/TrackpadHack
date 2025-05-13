@@ -6,6 +6,7 @@
 #include "Cfgmgr32.h"
 #include <iostream>
 #include <Devpkey.h>
+#include <mutex>
 #pragma comment (lib, "SetupAPI")
 #pragma comment (lib, "Cfgmgr32")
 
@@ -18,6 +19,18 @@ HANDLE g_ServiceStopEvent = nullptr;
 #define LAPTOP_MODE 1
 
 #define TOUCHPAD_HWID L"HID\\VEN_ELAN&DEV_1201&Col02"
+
+std::mutex svcMutex;
+
+enum State
+{
+	LAPTOP, 
+	TABLET,
+	UNKNOWN
+};
+	
+State currentState = State::UNKNOWN;
+int lastSlateValue = -1;
 
 void ToggleTouchpad(bool enable)
 {
@@ -60,31 +73,33 @@ void ToggleTouchpad(bool enable)
 
 		if (!wcscmp(devBuf, TOUCHPAD_HWID)) //Found our HWID
 		{
-			ULONG desiredStatus = enable ? DICS_ENABLE : DICS_DISABLE;
 			//Check if device is already in the state we want
 			ULONG currStatus, problem = 0;
 
-			CM_Get_DevNode_Status(&currStatus, &problem, devData.DevInst, 0);
-			bool isEnabled = problem != CM_PROB_DISABLED ? true : false;
-			if (isEnabled != enable)
+			if (CM_Get_DevNode_Status(&currStatus, &problem, devData.DevInst, 0) == CR_SUCCESS)
 			{
-				//Enable/disable
-				SP_CLASSINSTALL_HEADER ciHeader;
-				ciHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
-				ciHeader.InstallFunction = DIF_PROPERTYCHANGE;
+				bool isEnabled = (currStatus & DN_STARTED);
 
-				SP_PROPCHANGE_PARAMS pcParams;
-				pcParams.ClassInstallHeader = ciHeader;
-				pcParams.StateChange = desiredStatus;
-				pcParams.Scope = DICS_FLAG_GLOBAL;
-				pcParams.HwProfile = 0;
+				if (isEnabled != enable)
+				{
+					//Enable/disable
+					SP_CLASSINSTALL_HEADER ciHeader;
+					ciHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+					ciHeader.InstallFunction = DIF_PROPERTYCHANGE;
 
-				SetupDiSetClassInstallParams(devInfo, &devData, (PSP_CLASSINSTALL_HEADER)&pcParams, sizeof(SP_PROPCHANGE_PARAMS));
-				SetupDiChangeState(devInfo, &devData);
+					SP_PROPCHANGE_PARAMS pcParams;
+					pcParams.ClassInstallHeader = ciHeader;
+					pcParams.StateChange = enable ? DICS_ENABLE : DICS_DISABLE;
+					pcParams.Scope = DICS_FLAG_GLOBAL;
+					pcParams.HwProfile = 0;
+
+					SetupDiSetClassInstallParams(devInfo, &devData, (PSP_CLASSINSTALL_HEADER)&pcParams, sizeof(SP_PROPCHANGE_PARAMS));
+					SetupDiChangeState(devInfo, &devData);
+				}
+
+				free(devBuf);
+				break;
 			}
-
-			free(devBuf);
-			break;
 		}
 
 		free(devBuf);
@@ -93,33 +108,41 @@ void ToggleTouchpad(bool enable)
 	SetupDiDestroyDeviceInfoList(devInfo);
 }
 
-VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
+VOID WINAPI SvcCtrlHandler(DWORD dwCtrl, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext)
 {
-	// Handle the requested control code. 
-
+	// TODO implement these
+		
 	switch (dwCtrl)
 	{
 		case SERVICE_CONTROL_STOP:
-			//ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-
 			// Signal the service to stop.
-
 			SetEvent(g_ServiceStopEvent);
-			//ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
-
 			return;
 
 		case SERVICE_CONTROL_INTERROGATE:
+			break;
+		case SERVICE_CONTROL_POWEREVENT:
+			//Windows re-enables the trackpad, but continues to report it as disabeld (if we went to sleep wiht it off)
+			//It also mis-reports whether we are in laptop or tablet mode
+			//To prevent blocking the user by basing our logic on this incorrect information, go into an unknown state and
+			//wait for the convertableslatemode value to change, so we know we're working with reliable data again
+			if (dwEventType == PBT_APMRESUMEAUTOMATIC || dwEventType == PBT_APMRESUMESUSPEND)
+			{
+				svcMutex.lock();
+				currentState = State::UNKNOWN;
+				ToggleTouchpad(true);
+				svcMutex.unlock();
+			}
 			break;
 
 		default:
 			break;
 	}
-
 }
 
 void RunService()
 {
+
 	DWORD value = 0;
 	DWORD size = sizeof(DWORD);
 	LRESULT result = RegGetValue(HKEY_LOCAL_MACHINE,
@@ -132,24 +155,41 @@ void RunService()
 
 	if (result == ERROR_SUCCESS)
 	{
+		svcMutex.lock();
+
+		if(currentState == State::UNKNOWN)
+		{
+			//Wait for value to change
+			if(value == lastSlateValue)
+			{
+				svcMutex.unlock();
+				return;
+			}
+
+			lastSlateValue = value;
+		}
 		switch (value)
 		{
 			case TABLET_MODE:
 			{
+				currentState = State::TABLET;
 				ToggleTouchpad(false);
 				break;
 			}
 			case LAPTOP_MODE:
 			{
+				currentState = State::LAPTOP;
 				ToggleTouchpad(true);
 				break;
 			}
 		}
+
+		svcMutex.unlock();
 	}
 }
 
 void WINAPI ServiceMain(DWORD, LPTSTR*) {
-	g_StatusHandle = RegisterServiceCtrlHandler(SERVICE_NAME, SvcCtrlHandler);
+	g_StatusHandle = RegisterServiceCtrlHandlerEx(SERVICE_NAME, (LPHANDLER_FUNCTION_EX)SvcCtrlHandler, NULL);
 
 	g_ServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 	g_ServiceStatus.dwControlsAccepted = 0;
